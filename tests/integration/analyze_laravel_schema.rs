@@ -36,7 +36,8 @@ class Carbon {
 
 /// Reports member accesses on a subject whose type is unknown, so a column
 /// that loses its type is caught.
-const PHPANTOM_TOML: &str = "[diagnostics]\nunresolved-member-access = true\n";
+const PHPANTOM_TOML: &str =
+    "[diagnostics]\nunresolved-member-access = true\npossibly-empty-mismatches = true\n";
 
 /// Analyse `consumer` on its own and return the process exit code (`0`
 /// clean, `1` diagnostics found).
@@ -64,6 +65,7 @@ async fn analyse_consumer(consumer: &str) -> i32 {
         verbosity: 0,
         // Never the machine's own; the test asserts on the project alone.
         global_config: None,
+        code_filter: phpantom_lsp::analyse::CodeFilter::default(),
     })
     .await
 }
