@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hover on declarations.** Hovering a class, method, property, constant, enum case or function where it is declared shows the same signature and documentation as hovering a use of it, including documentation inherited from an interface or parent. Contributed by @kaskader201.
 - **Filter `analyze` by diagnostic code.** `--code unused_import` reports only that code and `--exclude-code unused_import` leaves it out. Both are repeatable and work with `--severity` and every output format. Contributed by @stubbedev.
 - **Go to declaration.** On a method call or a method's own declaration, go-to-declaration jumps to the interface or abstract method it implements. Where there is none, it lands where go-to-definition does.
 - **Morph aliases and config keys complete as array keys.** Registered aliases are suggested for the keys of `Relation::morphMap([...])`, and config keys for the keys of `Config::set([...])` and `config([...])`. Contributed by @shuvroroy.

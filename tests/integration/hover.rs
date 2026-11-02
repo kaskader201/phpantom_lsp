@@ -1796,8 +1796,12 @@ function test(Traversable $t): void {}
     );
 }
 
+/// A declaration site answers the same hover a reference to it would.
+/// Clients that navigate through the protocol (scripts, agents) land on
+/// declarations via go-to-definition and document symbols, and need the
+/// resolved signature without reading the file.
 #[test]
-fn hover_class_declaration_returns_none() {
+fn hover_class_declaration_shows_class() {
     let backend = create_test_backend();
     let uri = "file:///test.php";
     let content = r#"<?php
@@ -1809,17 +1813,17 @@ class BlogPost {
 }
 "#;
 
-    // Hover on `BlogPost` at its declaration site should return None —
-    // the user is already looking at the definition.
-    let hover = hover_at(&backend, uri, content, 4, 8);
+    let hover = hover_at(&backend, uri, content, 4, 8).expect("expected hover");
+    let text = hover_text(&hover);
+    assert!(text.contains("class BlogPost"), "should show class: {text}");
     assert!(
-        hover.is_none(),
-        "should not show hover on class declaration site"
+        text.contains("Represents a blog post."),
+        "should show docblock: {text}"
     );
 }
 
 #[test]
-fn hover_class_declaration_disambiguates_by_namespace_returns_none() {
+fn hover_class_declaration_disambiguates_by_namespace() {
     let backend = create_test_backend();
     let uri = "file:///test.php";
     let content = r#"<?php
@@ -1837,28 +1841,31 @@ namespace Illuminate\Contracts\Database\Eloquent {
 }
 "#;
 
-    // Hover on declaration sites should return None.
-    let hover = hover_at(&backend, uri, content, 11, 16);
+    let hover = hover_at(&backend, uri, content, 11, 16).expect("expected hover");
+    let text = hover_text(&hover);
     assert!(
-        hover.is_none(),
-        "should not show hover on interface declaration site"
+        text.contains("interface Builder"),
+        "should show the interface: {text}"
+    );
+    assert!(
+        text.contains("Illuminate\\Contracts\\Database\\Eloquent"),
+        "should show the interface's namespace: {text}"
     );
 
-    let hover = hover_at(&backend, uri, content, 2, 12);
+    let hover = hover_at(&backend, uri, content, 2, 12).expect("expected hover");
+    let text = hover_text(&hover);
     assert!(
-        hover.is_none(),
-        "should not show hover on class declaration site"
+        text.contains("class Builder"),
+        "should show the class: {text}"
+    );
+    assert!(
+        !text.contains("interface Builder"),
+        "should not show the interface: {text}"
     );
 }
 
-/// A member's own declaration site answers nothing, for the same reason
-/// a class declaration does: the signature is on the line under the
-/// cursor and the docblock is on the lines above it, so the popup would
-/// only repeat what is already on screen.  Where a member is declared
-/// relative to the one it overrides is a code lens (or an `#[Override]`
-/// attribute), not a hover.
 #[test]
-fn hover_member_declaration_sites_return_none() {
+fn hover_member_declaration_sites_show_member() {
     let backend = create_test_backend();
     let uri = "file:///test.php";
     let content = r#"<?php
@@ -1880,27 +1887,65 @@ enum Status: string {
 }
 "#;
 
-    for (what, line, character) in [
-        ("class constant", 6u32, 19u32),
-        ("property", 9, 20),
-        ("method", 12, 22),
-        ("enum case", 15, 10),
+    for (what, line, character, expected) in [
+        (
+            "class constant",
+            6u32,
+            19u32,
+            ["MAX_QTY", "maximum quantity"],
+        ),
+        ("property", 9, 20, ["$sku", "stock keeping unit"]),
+        ("method", 12, 22, ["function run", "Does the thing."]),
+        ("enum case", 15, 10, ["Paid", "enum Status"]),
     ] {
-        let hover = hover_at(&backend, uri, content, line, character);
-        assert!(
-            hover.is_none(),
-            "should not show hover on the {what} declaration site, got: {hover:?}"
-        );
+        let hover = hover_at(&backend, uri, content, line, character)
+            .unwrap_or_else(|| panic!("expected hover on the {what} declaration site"));
+        let text = hover_text(&hover);
+        for needle in expected {
+            assert!(
+                text.contains(needle),
+                "{what} declaration hover should contain {needle:?}: {text}"
+            );
+        }
     }
 }
 
-/// A global function's own name, a top-level constant's own name, and a
-/// constructor-promoted parameter's own name all declare something whose
-/// full signature/value is already on screen — same rule as
-/// [`hover_member_declaration_sites_return_none`], applied to the three
-/// declaration sites that used to slip through it.
+/// A method without its own docblock that implements an interface method
+/// shows the interface's documentation, which is nowhere on screen.
 #[test]
-fn hover_global_declaration_sites_return_none() {
+fn hover_member_declaration_shows_inherited_docblock() {
+    let backend = create_test_backend();
+    let uri = "file:///test.php";
+    let content = r#"<?php
+interface Payable {
+    /**
+     * Mark the document as paid on the given date.
+     */
+    public function markPaid(\DateTimeImmutable $on): void;
+}
+class Invoice implements Payable {
+    public function markPaid(\DateTimeImmutable $on): void {}
+}
+"#;
+
+    let hover = hover_at(&backend, uri, content, 8, 22).expect("expected hover");
+    let text = hover_text(&hover);
+    assert!(
+        text.contains("function markPaid"),
+        "should show the signature: {text}"
+    );
+    assert!(
+        text.contains("Mark the document as paid"),
+        "should show the interface's docblock: {text}"
+    );
+    assert!(
+        text.contains("class Invoice"),
+        "should show the declaring class: {text}"
+    );
+}
+
+#[test]
+fn hover_global_declaration_sites_show_symbol() {
     let backend = create_test_backend();
     let uri = "file:///test.php";
     let content = r#"<?php
@@ -1916,17 +1961,39 @@ class Product {
 }
 "#;
 
-    for (what, line, character) in [
-        ("function", 2u32, 10u32),
-        ("top-level const", 6, 7),
-        ("promoted property parameter", 9, 48),
+    for (what, line, character, expected) in [
+        (
+            "function",
+            2u32,
+            10u32,
+            ["function helper", "shipping surcharge"],
+        ),
+        ("top-level const", 6, 7, ["LIMIT", "5"]),
+        ("promoted property parameter", 9, 48, ["$sku", "string"]),
     ] {
-        let hover = hover_at(&backend, uri, content, line, character);
-        assert!(
-            hover.is_none(),
-            "should not show hover on the {what} declaration site, got: {hover:?}"
-        );
+        let hover = hover_at(&backend, uri, content, line, character)
+            .unwrap_or_else(|| panic!("expected hover on the {what} declaration site"));
+        let text = hover_text(&hover);
+        for needle in expected {
+            assert!(
+                text.contains(needle),
+                "{what} declaration hover should contain {needle:?}: {text}"
+            );
+        }
     }
+}
+
+#[test]
+fn hover_namespace_declaration_returns_none() {
+    let backend = create_test_backend();
+    let uri = "file:///test.php";
+    let content = r#"<?php
+namespace App\Models;
+
+class User {}
+"#;
+
+    assert!(hover_at(&backend, uri, content, 1, 14).is_none());
 }
 
 /// A request can arrive before the file has ever been parsed: an editor

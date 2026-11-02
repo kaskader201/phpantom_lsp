@@ -34,30 +34,30 @@ impl Backend {
             ctx,
             ..
         } = *site;
-        // Suppress hover when the cursor is on a variable at its
-        // definition site where the type is already visible in
-        // the signature (properties, static/global declarations).
+        // A property declaration, including a constructor-promoted
+        // parameter, answers the property's hover. Static and global
+        // declarations have nothing beyond what the line already shows.
         // For parameters, assignments, foreach bindings, and catch
         // bindings, hover is useful to show the resolved type and
         // any docblock descriptions.
-        if let Some(def_kind) = self.lookup_var_def_kind_at(uri, name, cursor_offset)
-            && (!matches!(
-                def_kind,
+        match self.lookup_var_def_kind_at(uri, name, cursor_offset) {
+            Some(VarDefKind::Property) => {
+                return self.hover_member_declaration(site, name.trim_start_matches('$'), false);
+            }
+            Some(VarDefKind::Parameter) if self.is_promoted_property_param(uri, symbol.start) => {
+                return self.hover_member_declaration(site, name.trim_start_matches('$'), false);
+            }
+            Some(
                 VarDefKind::Assignment
-                    | VarDefKind::CompoundAssignment
-                    | VarDefKind::Parameter
-                    | VarDefKind::Foreach
-                    | VarDefKind::Catch
-                    | VarDefKind::ArrayDestructuring
-                    | VarDefKind::ListDestructuring
-            ) || (def_kind == VarDefKind::Parameter
-                && self.is_promoted_property_param(uri, symbol.start)))
-        {
-            // A constructor-promoted parameter declares a property,
-            // not a local variable, so it follows the same
-            // "already visible on screen" rule as any other
-            // property declaration.
-            return None;
+                | VarDefKind::CompoundAssignment
+                | VarDefKind::Parameter
+                | VarDefKind::Foreach
+                | VarDefKind::Catch
+                | VarDefKind::ArrayDestructuring
+                | VarDefKind::ListDestructuring,
+            )
+            | None => {}
+            Some(_) => return None,
         }
         self.hover_variable(name, uri, content, cursor_offset, site.current_class(), ctx)
     }

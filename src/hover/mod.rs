@@ -17,6 +17,7 @@
 
 mod class;
 mod constants;
+mod declaration;
 mod formatting;
 mod function;
 mod laravel;
@@ -249,19 +250,11 @@ impl Backend {
             SymbolKind::SelfStaticParent(ssp_kind) => {
                 self.hover_self_static_parent(&site, *ssp_kind)
             }
-            // The user is already at the declaration: hover would just
-            // repeat the signature, docblock or value that is on screen.
-            SymbolKind::ClassDeclaration { .. }
-            | SymbolKind::MemberDeclaration { .. }
-            | SymbolKind::NamespaceDeclaration { .. }
-            | SymbolKind::FunctionCall {
-                is_definition: true,
-                ..
-            }
-            | SymbolKind::ConstantReference {
-                is_definition: true,
-                ..
-            } => None,
+            SymbolKind::ClassDeclaration { .. } => self.hover_class_declaration(&site),
+            SymbolKind::MemberDeclaration {
+                name, is_method, ..
+            } => self.hover_member_declaration(&site, name, *is_method),
+            SymbolKind::NamespaceDeclaration { .. } => None,
             SymbolKind::FunctionCall {
                 name,
                 is_docblock_reference,
